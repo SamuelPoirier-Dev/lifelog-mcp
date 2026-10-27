@@ -188,8 +188,7 @@ les utilitaires de FastMCP (`ASGIServer`, `run_asgi_lifespan`)**, sans port ni U
 **D26 — Image Docker en deux étapes (build avec `uv`, exécution sur `python:3.13-slim`),
 utilisateur non root, port 8000.**
 
-**D27 — Poste local : environnement virtuel dans `.venv.nosync`, avec un lien `.venv` vers
-lui.** Le dépôt est dans iCloud Drive, qui marque des fichiers comme cachés ; Python 3.13
-ignore les fichiers `.pth` cachés, et le paquet devient introuvable. Le suffixe `.nosync`
-exclut aussi le dossier de la synchronisation. Ce réglage est propre à ce poste et n'est
-pas versionné.
+**D27 — Le dépôt ne vit pas dans un dossier synchronisé par iCloud Drive.** iCloud marque
+des fichiers comme cachés ; Python 3.13 ignore les fichiers `.pth` cachés, et le paquet
+installé en mode éditable devient introuvable. iCloud crée aussi des doublons de conflit
+(« .venv 2 »). GitHub sert de sauvegarde.
