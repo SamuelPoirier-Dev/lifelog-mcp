@@ -1,0 +1,11 @@
+.git
+.venv
+.venv.nosync
+.env
+.envrc
+**/__pycache__
+.pytest_cache
+.ruff_cache
+tests
+infra
+*.md
