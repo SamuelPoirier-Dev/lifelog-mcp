@@ -46,7 +46,7 @@ pour alimenter plus tard le dashboard.
 - Stats : verres standard par semaine, jours sans entrée.
 
 ### Général
-- Fuseau horaire : America/Toronto.
+- Fuseau horaire : heure de Québec (identifiant IANA `America/Toronto`).
 
 ## Stack imposée
 | Rôle | Choix |

@@ -12,7 +12,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée)
 |---|---|---|
 | 1 | Squelette local exécutable de bout en bout | ✅ |
 | 2 | Infra Azure + authentification Entra (levée du risque OAuth) | ✅ |
-| 3 | Modèle générique et catégorie `drinks` (logique pure) | ⬜ |
+| 3 | Modèle générique et catégorie `drinks` (logique pure) | ✅ |
 | 4 | Stockage : interface `Repository`, mémoire et Cosmos DB | ⬜ |
 | 5 | Outils MCP métier | ⬜ |
 | 6 | API REST en lecture | ⬜ |
@@ -77,11 +77,15 @@ seulement l'outil `ping`.
   vérification de claude.ai (D36).
 
 ### 3. Modèle générique et catégorie `drinks` (logique pure)
-- Modèle `Entry` (catégorie, horodatage, quantité, note, attributs).
+- Modèle `Entry` (catégorie, horodatage, quantité, note, attributs) — `entries.py`.
 - Contrat d'une catégorie : nom, description, modèle Pydantic des attributs (validation),
-  calcul des stats ; registre des catégories.
-- Catégorie `drinks` : types, valeurs par défaut, verres standard, stats.
-- Utilitaires de temps (fuseau America/Toronto, semaines ISO, jours sans entrée).
+  calcul des stats ; registre des catégories (objet instanciable, D46) — `categories/`.
+- Catégorie `drinks` : types `beer`, `cider`, `wine`, `spirits`, `other` (D39), valeurs par
+  défaut appliquées et stockées (D40), verres standard recalculés à la lecture (D41).
+  Stats : total, nombre d'entrées, verres par semaine ISO (semaines vides incluses), jours
+  sans entrée.
+- Utilitaires de temps (heure de Québec D47, périodes D44, semaines ISO, jours sans
+  entrée) — `timeutils.py`.
 - Tests : calcul des verres standard, validation, stats, bornes de dates, catégorie fictive
   ajoutée dans les tests sans rien toucher d'autre.
 
@@ -141,7 +145,7 @@ Verres standard = `ml × %/100 × 0,789 g/ml ÷ 13,45 g`. Si une bière arrive s
 informations, la validation refuse avec un message explicite et Claude les demande ; Claude
 ne devine pas le % d'une marque.
 
-**D5 — Semaine ISO (lundi–dimanche), jour calendaire minuit–minuit à Toronto.**
+**D5 — Semaine ISO (lundi–dimanche), jour calendaire minuit–minuit à Québec.**
 Simple et prévisible ; une entrée à 0 h 30 compte pour le jour suivant.
 
 **D6 — « Jours sans entrée » = jours de la période sans aucune entrée, jusqu'à aujourd'hui
@@ -150,8 +154,8 @@ inclus.** Les jours futurs ne comptent pas.
 **D7 — Période : `start`/`end` optionnels, semaine en cours par défaut.**
 Claude convertit les expressions (« ce mois-ci ») en dates.
 
-**D8 — Heures stockées en UTC ; heure sans fuseau = heure de Toronto ; réponses en heure
-de Toronto.**
+**D8 — Heures stockées en UTC ; heure sans fuseau = heure de Québec ; réponses en heure
+de Québec.**
 
 **D9 — `log_entry` accepte une liste d'entrées d'une même catégorie, validée en entier
 avant écriture (tout ou rien).**
@@ -222,7 +226,7 @@ des fichiers comme cachés ; Python 3.13 ignore les fichiers `.pth` cachés, et 
 installé en mode éditable devient introuvable. iCloud crée aussi des doublons de conflit
 (« .venv 2 »). GitHub sert de sauvegarde.
 
-**D28 — Région Azure : `canadacentral` (Toronto).** Proche de l'utilisateur ; Container
+**D28 — Région Azure : `canadacentral` (centre de données à Toronto).** Proche de l'utilisateur ; Container
 Apps et Cosmos DB y sont disponibles.
 
 **D29 — Alerte de budget à 5 $ par mois sur l'abonnement.** Le courriel de destination est
@@ -273,3 +277,36 @@ Entra dès la connexion, avant la liste blanche du serveur (D32).
 **D38 — Push manuel sur ghcr.io avec un jeton d'accès personnel classique**
 (`write:packages`, expiration courte, révoqué après usage) : ghcr.io refuse le jeton OAuth
 de GitHub CLI. À l'étape 7, GitHub Actions utilisera son `GITHUB_TOKEN`.
+
+**D39 — Type de boisson `cider` : 5 % d'alcool par défaut, volume obligatoire.** Les
+formats de cidre varient trop (355, 473, 500 ml…) pour un volume par défaut ; le taux,
+lui, est assez stable. Complète D4.
+
+**D40 — Les attributs stockés sont les valeurs appliquées (défauts inclus).** Un vin
+sans précision est stocké à 142 ml et 12 % : changer un jour les valeurs par défaut ne
+modifie pas l'historique.
+
+**D41 — Verres standard recalculés à la lecture, jamais stockés.** Le volume et le taux
+suffisent ; une seule source de vérité.
+
+**D42 — Quantité décimale strictement positive** (« un demi-verre » = 0,5).
+
+**D43 — Bornes : volume de 1 à 5 000 ml, taux de 0 à 100 %.** 0 % permet la bière sans
+alcool (0 verre standard).
+
+**D44 — Période : début seul → jusqu'à aujourd'hui ; fin seule → refusée (ambiguë).**
+Complète D7.
+
+**D45 — Stats calculées en pleine précision, arrondies à 1 décimale dans le résultat ;
+pas de répartition par type pour l'instant** (hors de la demande).
+
+**D46 — Registre des catégories instanciable**, plutôt qu'un dictionnaire global : les
+tests construisent leur propre registre (avec une catégorie fictive) sans toucher au
+registre réel. Les modèles d'attributs refusent les champs inconnus (une faute de frappe
+devient une erreur, pas une donnée perdue).
+
+**D47 — Heure de Québec, identifiant technique `America/Toronto`.** L'utilisateur habite
+Québec : les textes, la doc et le code parlent d'heure de Québec. La base IANA des fuseaux
+n'a pas d'entrée `America/Quebec` ; Québec y relève du fuseau de l'Est, dont la ville de
+référence est Toronto (`America/Montreal` n'est qu'un alias obsolète). L'identifiant
+n'apparaît qu'à un seul endroit du code, commenté.
