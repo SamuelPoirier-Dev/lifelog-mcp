@@ -20,6 +20,9 @@ RUN uv sync --locked --no-dev --no-editable
 # --- Runtime stage: only Python and the virtualenv, no uv, no build tools ---
 FROM python:3.13-slim-trixie
 
+# Links the ghcr.io package to its GitHub repository.
+LABEL org.opencontainers.image.source="https://github.com/SamuelPoirier-Dev/lifelog-mcp"
+
 RUN useradd --system --uid 10001 --no-create-home app
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv

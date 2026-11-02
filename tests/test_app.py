@@ -1,4 +1,4 @@
-"""Full FastAPI app tested over HTTP, in-process (no socket, no uvicorn)."""
+"""Full FastAPI app tested over HTTP, in-process (no socket, no uvicorn), without auth."""
 
 from collections.abc import AsyncIterator
 
@@ -12,7 +12,7 @@ from lifelog.settings import Settings
 
 @pytest.fixture
 async def server() -> AsyncIterator[ASGIServer]:
-    app = create_app(Settings())
+    app = create_app(Settings(auth="none"))
     async with run_asgi_lifespan(app):
         yield ASGIServer(url=f"http://127.0.0.1{MCP_PATH}", app=app, transport_type="http")
 

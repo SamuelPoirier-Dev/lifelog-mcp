@@ -11,7 +11,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée)
 | # | Étape | Statut |
 |---|---|---|
 | 1 | Squelette local exécutable de bout en bout | ✅ |
-| 2 | Infra Azure + authentification Entra (levée du risque OAuth) | ⬜ |
+| 2 | Infra Azure + authentification Entra (levée du risque OAuth) | ✅ |
 | 3 | Modèle générique et catégorie `drinks` (logique pure) | ⬜ |
 | 4 | Stockage : interface `Repository`, mémoire et Cosmos DB | ⬜ |
 | 5 | Outils MCP métier | ⬜ |
@@ -40,18 +40,41 @@ Aucune fonctionnalité métier.
 ### 2. Infra Azure + authentification Entra (levée du risque OAuth)
 But : prouver tôt que claude.ai (web puis iPhone) se connecte au serveur via Entra, avec
 seulement l'outil `ping`.
-- `infra/bootstrap/` (état local) : groupe de ressources + compte de stockage pour l'état
-  Terraform distant.
-- `infra/` (état distant) : environnement Container Apps (sans Log Analytics), Container
-  App (scale 0 → 1, image ghcr.io publique), inscription d'application Entra (`azuread`),
-  secrets de la Container App, alerte de budget sur l'abonnement.
-- `AzureProvider` de FastMCP (proxy OAuth) + liste blanche de l'utilisateur autorisé.
-- Persistance de l'état OAuth (clients enregistrés, jetons) pour survivre au scale à zéro,
-  et clé de signature fixe (voir D14).
+- Code :
+  - `LIFELOG_AUTH` = `entra` (défaut) ou `none` (dev local) ; config Entra incomplète en
+    mode `entra` → l'app refuse de démarrer (D31).
+  - `AzureProvider` de FastMCP (proxy OAuth) : tenant unique, scope `access`, écran de
+    consentement conservé, URI de redirection des clients limitées (D35).
+  - Liste blanche des `oid` autorisés, appliquée par un middleware HTTP (D32).
+  - État OAuth dans Azure Table Storage via l'identité managée, chiffré par nous (D30) ;
+    en mémoire en local. Clé de signature fixe (D14).
+  - Tests : `/mcp` sans jeton → 401 ; `oid` hors liste refusé, `oid` autorisé accepté ;
+    `/.well-known/...` publics ; `/docs` & co toujours 404 ; démarrage refusé si config
+    incomplète.
+- `infra/bootstrap/` : groupe de ressources `rg-lifelog` + compte de stockage
+  pour l'état Terraform distant.
+- `infra/` (état distant), région `canadacentral` (D28) :
+  - environnement Container Apps (sans Log Analytics) ; Container App (scale 0 → 1, image
+    ghcr.io publique, port 8000, sonde TCP, identité managée) ;
+  - inscription d'application Entra (`azuread`) : scope `access`, redirection
+    `https://<fqdn>/auth/callback`, secret client valide 1 an ;
+  - compte de stockage dédié + table de l'état OAuth, rôle « Storage Table Data
+    Contributor » pour l'identité managée ;
+  - secrets de la Container App (secret client, clé de signature, clé de chiffrement),
+    générés par Terraform (D34) ;
+  - alerte de budget sur l'abonnement (D29).
+  - URL publique calculée à partir du nom de l'app et du domaine de l'environnement (D33).
 - Image construite et poussée à la main sur ghcr.io pour cette étape, avec
   `--platform linux/amd64` (le Mac est en arm64, Container Apps exécute de l'amd64).
 - Vérification réelle : connecteur ajouté sur claude.ai, `ping` appelé depuis le web et
   depuis l'iPhone ; un autre compte est refusé.
+- Risque principal : connexion d'un compte Microsoft personnel à une app à tenant unique
+  (D13). Repli : `tenant_id="consumers"`, la liste blanche restant en place.
+- Résultat : connexion Entra et `ping` réussis depuis le web et l'iPhone avec le compte
+  personnel invité du tenant (D13 confirmée, repli inutile). Refus d'un autre compte non
+  testé en réel : couvert par les tests automatiques (liste blanche) et par l'assignation
+  obligatoire de l'app Entra (D37). Démarrage à froid parfois trop lent pour la
+  vérification de claude.ai (D36).
 
 ### 3. Modèle générique et catégorie `drinks` (logique pure)
 - Modèle `Entry` (catégorie, horodatage, quantité, note, attributs).
@@ -91,6 +114,8 @@ seulement l'outil `ping`.
 - README portfolio : architecture, lancer, tester, design de l'API, décisions, ce qu'on
   ferait avec plus de temps.
 - Revue des logs (niveau, contenu sans données personnelles) et des coûts.
+- Démarrage à froid (D36) : mesurer, puis allonger le délai de mise en veille et/ou
+  accélérer le démarrage.
 
 ## Journal des décisions
 
@@ -150,7 +175,11 @@ Le proxy OAuth de FastMCP garde les clients enregistrés et les jetons ; en mém
 seraient perdus à chaque scale à zéro (reconnexion forcée). Le stockage persistant et une
 clé de signature fixe (secret) seront choisis à l'étape 2.
 
-**D15 — État Terraform distant amorcé par `infra/bootstrap/` (état local).**
+**D15 — État Terraform distant amorcé par `infra/bootstrap/`.** Premier `apply` avec un
+état local (le compte de stockage n'existe pas encore), puis état du bootstrap migré dans
+ce même compte (`bootstrap.tfstate`) : aucune copie locale à sauvegarder, versions
+conservées par le stockage. Seul inconvénient : détruire le bootstrap supprimerait son
+propre état, ce qui n'arrive qu'en démontant tout le projet.
 
 **D16 — CI/CD : OIDC vers Azure, image ghcr.io publique, `terraform apply` manuel au début.**
 OIDC évite de stocker un secret Azure dans GitHub ; l'image ne contient aucune donnée.
@@ -192,3 +221,55 @@ utilisateur non root, port 8000.**
 des fichiers comme cachés ; Python 3.13 ignore les fichiers `.pth` cachés, et le paquet
 installé en mode éditable devient introuvable. iCloud crée aussi des doublons de conflit
 (« .venv 2 »). GitHub sert de sauvegarde.
+
+**D28 — Région Azure : `canadacentral` (Toronto).** Proche de l'utilisateur ; Container
+Apps et Cosmos DB y sont disponibles.
+
+**D29 — Alerte de budget à 5 $ par mois sur l'abonnement.** Le courriel de destination est
+une variable Terraform, hors du dépôt.
+
+**D30 — État OAuth dans Azure Table Storage, accédé par l'identité managée de la Container
+App.** Simple base clé-valeur, déjà prise en charge par `py-key-value` (utilisé par
+FastMCP), coût négligeable, aucun secret de stockage. FastMCP ne chiffre que son stockage
+par défaut : on enveloppe la table dans `FernetEncryptionWrapper` avec une clé dédiée.
+Les clés interdites par Azure Tables (`/`, `?`… dans les identifiants de clients en URL)
+sont remplacées par une empreinte (`AzureTablesSanitizationStrategy`). Le module Azure
+Tables est marqué « instable » par la librairie : versions figées dans `uv.lock`, à
+revérifier lors des mises à jour.
+Écartés : Cosmos DB (aucun module existant, mélange avec les données), Azure Files
+(accès concurrent fragile, clé de stockage), Redis (≈ 15 $/mois).
+
+**D31 — `LIFELOG_AUTH=entra` par défaut ; `none` seulement sur demande explicite.** Une
+config Entra incomplète fait échouer le démarrage : impossible de déployer sans
+authentification par oubli.
+
+**D32 — Liste blanche par `oid` dans un middleware HTTP (Starlette)**, placé juste après
+la validation du jeton : toute requête authentifiée d'un `oid` hors liste reçoit 403,
+avant même le protocole MCP. Plus net qu'un filtrage outil par outil, et réutilisable
+pour l'API REST. Le tenant unique est une première barrière, la liste blanche la seconde.
+
+**D33 — URL publique calculée (`<nom de l'app>.<domaine de l'environnement>`)** plutôt que
+lue sur la Container App : l'inscription Entra et les variables de l'app en ont besoin,
+ce qui créerait une dépendance circulaire dans Terraform.
+
+**D34 — Secrets générés par Terraform (secret client, clé de signature, clé de
+chiffrement).** Ils figurent dans l'état Terraform, conservé dans un compte de stockage
+privé : acceptable pour un projet personnel.
+
+**D35 — URI de redirection des clients MCP limitées au callback de claude.ai et à
+`localhost` (MCP Inspector).**
+
+**D36 — Scale à zéro conservé malgré le démarrage à froid.** Après une longue
+inactivité, la vérification du connecteur par claude.ai a expiré pendant le réveil du
+conteneur ; un nouvel essai, conteneur réveillé, a réussi. Toujours allumé
+(`min_replicas = 1`) : ≈ 5,70 $ US/mois au tarif inactif après la part gratuite, au-delà
+du budget (D29). Pistes pour l'étape 8 : délai de mise en veille de 30 à 60 min (coût
+seulement pendant les sessions), image et démarrage plus rapides.
+
+**D37 — App Entra à assignation obligatoire (`app_role_assignment_required`)**, avec les
+`oid` de la liste blanche assignés par Terraform. Un compte non assigné est refusé par
+Entra dès la connexion, avant la liste blanche du serveur (D32).
+
+**D38 — Push manuel sur ghcr.io avec un jeton d'accès personnel classique**
+(`write:packages`, expiration courte, révoqué après usage) : ghcr.io refuse le jeton OAuth
+de GitHub CLI. À l'étape 7, GitHub Actions utilisera son `GITHUB_TOKEN`.
