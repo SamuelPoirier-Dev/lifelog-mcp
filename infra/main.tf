@@ -30,6 +30,8 @@ resource "azurerm_storage_account" "oauth" {
   allow_nested_items_to_be_public = false
   # Reached with the Container App's managed identity only.
   shared_access_key_enabled = false
+  # The Azure portal browses the data with the signed-in identity, not a key.
+  default_to_oauth_authentication = true
 }
 
 resource "azurerm_storage_table" "oauth" {
@@ -153,6 +155,18 @@ resource "azurerm_container_app" "lifelog" {
       env {
         name        = "LIFELOG_OAUTH_STORAGE_ENCRYPTION_KEY"
         secret_name = "oauth-storage-encryption-key"
+      }
+      env {
+        name  = "LIFELOG_STORAGE"
+        value = "table"
+      }
+      env {
+        name  = "LIFELOG_TABLE_ACCOUNT"
+        value = azurerm_storage_account.data.name
+      }
+      env {
+        name  = "LIFELOG_TABLE_NAME"
+        value = azurerm_storage_table.entries.name
       }
 
       # TCP probes only: no public /health route (D20).

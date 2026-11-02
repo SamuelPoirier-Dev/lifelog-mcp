@@ -16,11 +16,12 @@ Claude app, plus a read-only REST API for dashboards.
 
 ```bash
 uv sync
-LIFELOG_AUTH=none uv run uvicorn lifelog.app:create_app --factory --reload
+LIFELOG_AUTH=none LIFELOG_STORAGE=memory uv run uvicorn lifelog.app:create_app --factory --reload
 ```
 
-`LIFELOG_AUTH=none` turns authentication off for local use; without it the server expects
-the Microsoft Entra settings below and refuses to start if they are missing.
+`LIFELOG_AUTH=none` turns authentication off and `LIFELOG_STORAGE=memory` keeps entries in
+memory (lost on restart), for local use. Without them the server expects the Microsoft
+Entra and Table Storage settings below and refuses to start if they are missing.
 
 The MCP endpoint is served at `http://127.0.0.1:8000/mcp` (streamable HTTP transport).
 
@@ -36,7 +37,7 @@ Then choose the *Streamable HTTP* transport, enter `http://127.0.0.1:8000/mcp` a
 
 ```bash
 docker build -t lifelog .
-docker run --rm -p 8000:8000 -e LIFELOG_AUTH=none lifelog
+docker run --rm -p 8000:8000 -e LIFELOG_AUTH=none -e LIFELOG_STORAGE=memory lifelog
 ```
 
 ## Tests and lint
@@ -45,6 +46,14 @@ docker run --rm -p 8000:8000 -e LIFELOG_AUTH=none lifelog
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+```
+
+Storage tests also run against the real Azure Table Storage on request (they are skipped
+by default). They use the Azure CLI login and clean up after themselves:
+
+```bash
+LIFELOG_TEST_TABLE_ACCOUNT=$(terraform -chdir=infra output -raw data_storage_account) \
+  uv run pytest -m azure
 ```
 
 ## Configuration
@@ -64,12 +73,16 @@ Settings are read from environment variables prefixed with `LIFELOG_` (or a `.en
 | `LIFELOG_OAUTH_TABLE_ACCOUNT` | | Storage account holding the OAuth state (in memory if unset) |
 | `LIFELOG_OAUTH_TABLE_NAME` | `oauthstate` | Table holding the OAuth state |
 | `LIFELOG_OAUTH_STORAGE_ENCRYPTION_KEY` | | Encrypts the OAuth state; required with a table |
+| `LIFELOG_STORAGE` | `table` | `table` (Azure Table Storage) or `memory` (local development only) |
+| `LIFELOG_TABLE_ACCOUNT` | | Storage account holding the entries table; required with `table` |
+| `LIFELOG_TABLE_NAME` | `entries` | Table of entries, one partition per category |
 
 ## Deploy to Azure
 
 The infrastructure is described with Terraform in [infra/](infra/): Azure Container Apps
-(scale to zero), a Microsoft Entra app registration for sign-in, an Azure Table Storage
-table for the OAuth state, and a monthly budget alert. Requirements: an Azure
+(scale to zero), Azure Table Storage for the entries, a Microsoft Entra app
+registration for sign-in, an Azure Table Storage table for the OAuth state, and a
+monthly budget alert. Requirements: an Azure
 subscription, the [Azure CLI](https://learn.microsoft.com/cli/azure/) and
 [Terraform](https://developer.hashicorp.com/terraform/install).
 

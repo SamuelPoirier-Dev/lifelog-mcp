@@ -13,7 +13,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée)
 | 1 | Squelette local exécutable de bout en bout | ✅ |
 | 2 | Infra Azure + authentification Entra (levée du risque OAuth) | ✅ |
 | 3 | Modèle générique et catégorie `drinks` (logique pure) | ✅ |
-| 4 | Stockage : interface `Repository`, mémoire et Cosmos DB | ⬜ |
+| 4 | Stockage : interface `Repository`, mémoire et Table Storage | ✅ |
 | 5 | Outils MCP métier | ⬜ |
 | 6 | API REST en lecture | ⬜ |
 | 7 | CI/CD GitHub Actions | ⬜ |
@@ -89,14 +89,24 @@ seulement l'outil `ping`.
 - Tests : calcul des verres standard, validation, stats, bornes de dates, catégorie fictive
   ajoutée dans les tests sans rien toucher d'autre.
 
-### 4. Stockage : interface `Repository`, mémoire et Cosmos DB
-- Interface `Repository` (ajout en lot, lecture par catégorie et période).
-- Implémentation en mémoire (tests, dev local) et implémentation Cosmos DB.
+### 4. Stockage : interface `Repository`, mémoire et Table Storage
+- Interface `Repository` : `add_many` (tout ou rien, une catégorie) et `list` (catégorie,
+  intervalle UTC, tri par heure) — `storage/`.
+- Implémentation en mémoire (tests, dev local) et implémentation Azure Table Storage
+  (identité managée) : table `entries`, `PartitionKey` = catégorie, `RowKey` = heure au
+  format fixe + identifiant (D57), écriture en lot transactionnelle, attributs en JSON.
 - Couche service (`log_entries`, `list_entries`, `get_stats`, `list_categories`) partagée
-  par MCP et REST.
-- Terraform : compte Cosmos DB en volet gratuit, base, conteneur ; accès de la Container App.
-- Tests du service sur le dépôt en mémoire ; test d'intégration Cosmos optionnel
-  (émulateur), marqué pour ne pas tourner par défaut.
+  par MCP et REST — `service.py`. Validation de tout le lot avant écriture, erreurs
+  numérotées.
+- `LIFELOG_STORAGE` = `table` (défaut) ou `memory` ; `LIFELOG_TABLE_ACCOUNT` obligatoire
+  en mode `table` (D51).
+- Terraform : compte de stockage dédié aux données, table `entries`, verrou contre la
+  suppression (D58) ; droits sur les tables pour l'app et l'utilisateur (D53).
+- Tests : un même jeu de tests pour les deux stockages ; service sur le stockage en
+  mémoire ; tests réels à la demande (marqueur `azure`, D52).
+- Essai Cosmos DB abandonné : création refusée faute de capacité (D56).
+- L'image déployée n'est pas mise à jour à cette étape : rien ne l'utilise avant les
+  outils de l'étape 5.
 
 ### 5. Outils MCP métier
 - `log_entry`, `list_entries`, `get_stats`, `list_categories` ; retrait de `ping`.
@@ -120,18 +130,19 @@ seulement l'outil `ping`.
 - Revue des logs (niveau, contenu sans données personnelles) et des coûts.
 - Démarrage à froid (D36) : mesurer, puis allonger le délai de mise en veille et/ou
   accélérer le démarrage.
+- Sauvegarde des entrées (D58) : export régulier de la table vers un blob versionné.
 
 ## Journal des décisions
 
-**D1 — Base de données : Cosmos DB NoSQL, volet gratuit.**
-Les attributs varient selon la catégorie : un document JSON s'y prête mieux qu'un schéma
+**D1 — Base de données : Azure Table Storage** (d'abord Cosmos DB NoSQL, voir D56).
+Les attributs varient selon la catégorie : un stockage NoSQL s'y prête mieux qu'un schéma
 relationnel. Azure SQL en pause automatique a un réveil d'environ une minute, mauvais pour
-un usage en conversation. Le volet gratuit (1 000 RU/s, 25 Go) est disponible : aucun
-compte Azure existant.
+un usage en conversation. Cosmos DB (volet gratuit) était le premier choix ; sa création
+a été refusée faute de capacité, et Table Storage couvre aussi bien le besoin (D56).
 
 **D2 — Accès aux données via une interface `Repository`.**
 Une implémentation en mémoire (tests, dev local sans Azure) et une implémentation Cosmos.
-L'émulateur Cosmos reste optionnel.
+Tests Cosmos DB sur la vraie base plutôt que l'émulateur (D52).
 
 **D3 — `quantity` = nombre de contenants.**
 Le volume et le % d'alcool s'appliquent à un contenant ; total = quantité × verres par
@@ -310,3 +321,62 @@ Québec : les textes, la doc et le code parlent d'heure de Québec. La base IANA
 n'a pas d'entrée `America/Quebec` ; Québec y relève du fuseau de l'Est, dont la ville de
 référence est Toronto (`America/Montreal` n'est qu'un alias obsolète). L'identifiant
 n'apparaît qu'à un seul endroit du code, commenté.
+
+**D48 — *(remplacée par D56)* Cosmos DB : une collection `entries`, clé de partition `/category`.** Les
+requêtes d'une catégorie restent dans une partition, et un lot (une seule catégorie, D9)
+s'écrit en une transaction. Limite de 20 Go par partition : très loin pour un journal
+personnel.
+
+**D49 — *(reprise par D57)* Heure stockée au format ISO de longueur fixe, avec microsecondes
+(`2026-11-04T01:00:00.000000Z`).** Cosmos compare les dates comme du texte : un format
+variable trierait mal deux entrées dans la même seconde.
+
+**D50 — *(remplacée par D56)* Compte Cosmos DB : volet gratuit, clés désactivées, sauvegarde continue 7 jours,
+base à 400 RU/s partagées.** Le volet gratuit (1 000 RU/s, 25 Go) ne s'active qu'à la
+création et pour un seul compte par abonnement. La sauvegarde continue 7 jours est
+gratuite et permet une restauration à n'importe quel moment de la semaine.
+
+**D51 — `LIFELOG_STORAGE=cosmos` (devenu `table`, D56) par défaut ; `memory` seulement sur demande.** Même
+principe que D31 : un oubli de configuration ne doit pas faire tourner la production en
+mémoire et perdre des données.
+
+**D52 — Tests sur le vrai stockage Azure, à la demande (marqueur pytest `cosmos`, devenu `azure`).**
+L'émulateur n'accepte pas l'authentification par identité et sa version pour Mac est en
+préversion. Ces tests ne tournent ni par défaut, ni dans la CI. Remplace l'émulateur
+optionnel de D2.
+
+**D53 — Accès aux données (Cosmos DB, puis Table Storage) pour l'app (identité managée) et pour l'utilisateur**
+(portail Azure, tests réels depuis le Mac).
+
+**D54 — *(remplacée par D56)* Compte Cosmos DB propre à lifelog, non partagé ; droits limités à la base
+`lifelog`.** Un compte partagé entre projets garderait le volet gratuit pour tous, mais
+deviendrait un prérequis extérieur au dépôt et lierait les projets entre eux. Un autre
+petit projet peut utiliser Cosmos DB en mode serverless (quelques cents par mois) ou un
+autre abonnement (son propre volet gratuit).
+
+**D55 — *(remplacée par D56)* Compte Cosmos DB dans `canadaeast` (Québec), le reste dans `canadacentral`.**
+La création a été refusée en Canada Central (« high demand », fréquent pour les
+abonnements récents). Coût : environ 10 ms de plus par requête et un trafic entre
+régions quasi nul (≈ 0,02 $ US/Go). Les données restent au Canada. Container Apps et
+Storage existent aussi en Canada East : tout pourra y être regroupé plus tard
+(variable `cosmos_location`, puis recréation de l'app et du stockage OAuth).
+
+**D56 — Stockage des entrées dans Azure Table Storage au lieu de Cosmos DB.** La création
+du compte Cosmos DB a été refusée en Canada Central puis en Canada East (« high demand »,
+fréquent pour les abonnements récents). Table Storage couvre exactement le besoin :
+partition par catégorie, lecture d'une période par intervalle de clés, lot transactionnel
+(100 entrées, même partition), identité managée, coût de quelques cents. Déjà utilisé
+pour l'état OAuth, sans contrainte de capacité. Limites acceptées : attributs stockés en
+JSON (jamais filtrés), pas de restauration à un instant passé (D58). L'interface
+`Repository` a rendu la bascule locale au stockage. Remplace D48, D50, D54 et D55.
+
+**D57 — Clé de ligne = heure UTC au format fixe + identifiant
+(`2026-11-04T01:00:00.000000Z_<uuid>`).** Une période se lit avec un intervalle de
+`RowKey` dans une partition, résultats déjà triés ; l'identifiant départage deux entrées
+à la même microseconde. Reprend D49.
+
+**D58 — Compte de stockage dédié aux données, avec verrou contre la suppression
+(« CanNotDelete »).** Trois comptes au total (état Terraform, état OAuth jetable,
+données précieuses) : aucun coût fixe, un rôle évident chacun. Pas de restauration à un
+instant passé dans Table Storage : un export régulier vers un blob versionné est prévu
+à l'étape 8.

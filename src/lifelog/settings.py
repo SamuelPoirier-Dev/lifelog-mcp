@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # Encrypts the OAuth state before it is written to the table.
     oauth_storage_encryption_key: SecretStr | None = None
 
+    # Where entries are stored: "table" (Azure Table Storage, default) or "memory" (local
+    # development only, lost on restart).
+    storage: Literal["table", "memory"] = "table"
+    # Storage account holding the entries table.
+    table_account: str | None = None
+    table_name: str = "entries"
+
     @field_validator("allowed_oids", mode="before")
     @classmethod
     def _split_oids(cls, value: object) -> object:
@@ -41,8 +48,8 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _check_auth_config(self) -> "Settings":
-        """Fail at startup rather than run with incomplete authentication."""
+    def _check_config(self) -> "Settings":
+        """Fail at startup rather than run with incomplete authentication or storage."""
         missing: list[str] = []
         if self.auth == "entra":
             required = {
@@ -56,7 +63,9 @@ class Settings(BaseSettings):
             missing += [name for name, value in required.items() if not value]
         if self.oauth_table_account and not self.oauth_storage_encryption_key:
             missing.append("oauth_storage_encryption_key")
+        if self.storage == "table" and not self.table_account:
+            missing.append("table_account")
         if missing:
             names = ", ".join(f"LIFELOG_{name.upper()}" for name in missing)
-            raise ValueError(f"Missing settings for authentication: {names}")
+            raise ValueError(f"Missing settings: {names}")
         return self

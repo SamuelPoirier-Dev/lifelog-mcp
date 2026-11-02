@@ -12,7 +12,7 @@ from lifelog.settings import Settings
 
 @pytest.fixture
 async def server() -> AsyncIterator[ASGIServer]:
-    app = create_app(Settings(auth="none"))
+    app = create_app(Settings(auth="none", storage="memory"))
     async with run_asgi_lifespan(app):
         yield ASGIServer(url=f"http://127.0.0.1{MCP_PATH}", app=app, transport_type="http")
 

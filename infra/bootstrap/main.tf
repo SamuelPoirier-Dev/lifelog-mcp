@@ -77,6 +77,8 @@ resource "azurerm_storage_account" "tfstate" {
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
   shared_access_key_enabled       = false
+  # The Azure portal browses the data with the signed-in identity, not a key.
+  default_to_oauth_authentication = true
 
   blob_properties {
     # Previous versions of the state can be restored after a bad apply.

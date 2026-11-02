@@ -43,7 +43,7 @@ async def static_token_server() -> AsyncIterator[ASGIServer]:
             "no-oid-token": {"client_id": "c", "scopes": [API_SCOPE]},
         }
     )
-    settings = Settings(auth="none", allowed_oids=frozenset({ALLOWED_OID}))
+    settings = Settings(auth="none", storage="memory", allowed_oids=frozenset({ALLOWED_OID}))
     async for server in _serve(create_app(settings, auth_provider=verifier)):
         yield server
 
@@ -53,6 +53,7 @@ async def entra_server() -> AsyncIterator[ASGIServer]:
     """App with the real Entra provider, built from fake settings (no network needed)."""
     settings = Settings(
         auth="entra",
+        storage="memory",
         base_url="https://lifelog.example.com",
         entra_tenant_id="00000000-0000-0000-0000-000000000001",
         entra_client_id="00000000-0000-0000-0000-000000000002",
@@ -130,12 +131,13 @@ async def test_entra_has_no_other_public_route(entra_server: ASGIServer, path: s
 
 
 def test_oauth_state_is_in_memory_without_a_table():
-    assert create_oauth_storage(Settings(auth="none")) is None
+    assert create_oauth_storage(Settings(auth="none", storage="memory")) is None
 
 
 def test_oauth_state_in_a_table_is_encrypted():
     settings = Settings(
         auth="none",
+        storage="memory",
         oauth_table_account="lifelogoauth",
         oauth_storage_encryption_key="test-encryption-key-long-enough",
     )

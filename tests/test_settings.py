@@ -39,6 +39,7 @@ def test_entra_settings_are_read_from_the_environment(monkeypatch: pytest.Monkey
     for name, value in ENTRA_SETTINGS.items():
         monkeypatch.setenv(f"LIFELOG_{name.upper()}", value)
     monkeypatch.setenv("LIFELOG_ALLOWED_OIDS", " oid-1, oid-2 ,")
+    monkeypatch.setenv("LIFELOG_STORAGE", "memory")
 
     settings = Settings()
 
@@ -47,9 +48,17 @@ def test_entra_settings_are_read_from_the_environment(monkeypatch: pytest.Monkey
 
 
 def test_auth_none_needs_no_entra_settings():
-    assert Settings(auth="none").auth == "none"
+    assert Settings(auth="none", storage="memory").auth == "none"
 
 
 def test_oauth_table_requires_an_encryption_key():
     with pytest.raises(ValidationError, match="LIFELOG_OAUTH_STORAGE_ENCRYPTION_KEY"):
-        Settings(auth="none", oauth_table_account="lifelogoauth")
+        Settings(auth="none", storage="memory", oauth_table_account="lifelogoauth")
+
+
+def test_table_is_the_default_storage_and_requires_an_account():
+    with pytest.raises(ValidationError, match="LIFELOG_TABLE_ACCOUNT"):
+        Settings(auth="none")
+
+    settings = Settings(auth="none", table_account="stlifelogdata")
+    assert settings.storage == "table"
