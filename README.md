@@ -94,8 +94,8 @@ Settings are read from environment variables prefixed with `LIFELOG_` (or a `.en
 
 The infrastructure is described with Terraform in [infra/](infra/): Azure Container Apps
 (scale to zero), Azure Table Storage for the entries, a Microsoft Entra app
-registration for sign-in, an Azure Table Storage table for the OAuth state, and a
-monthly budget alert. Requirements: an Azure
+registration for sign-in, an Azure Table Storage table for the OAuth state, a
+managed identity for deployments from GitHub Actions, and a monthly budget alert. Requirements: an Azure
 subscription, the [Azure CLI](https://learn.microsoft.com/cli/azure/) and
 [Terraform](https://developer.hashicorp.com/terraform/install).
 
@@ -133,10 +133,11 @@ move its state into the storage account:
 terraform init -migrate-state
 ```
 
-### 2. Container image
+### 2. First container image
 
-Container Apps runs amd64 images; build for that platform and push to ghcr.io (the
-package must be public):
+The first `terraform apply` needs an image. Container Apps runs amd64 images; build for
+that platform and push to ghcr.io (the package must be public). Later versions are built
+and deployed by GitHub Actions (see below).
 
 ```bash
 docker build --platform linux/amd64 -t ghcr.io/<github user>/lifelog-mcp:<tag> .
@@ -150,7 +151,8 @@ Create `infra/terraform.tfvars` (not in git):
 | Variable | Description |
 |---|---|
 | `subscription_id` | Azure subscription ID (`az account show --query id`) |
-| `image` | Container image, e.g. `ghcr.io/<github user>/lifelog-mcp:<tag>` |
+| `image` | Image of the first creation, e.g. `ghcr.io/<github user>/lifelog-mcp:<tag>` |
+| `github_repository` | Optional, repository allowed to deploy (default `SamuelPoirier-Dev/lifelog-mcp`) |
 | `allowed_oids` | Entra object IDs allowed to use the server (`az ad signed-in-user show --query id`) |
 | `budget_email` | Address receiving the budget alerts |
 | `budget_amount` | Optional, monthly budget in the billing currency (default `5`) |
@@ -163,6 +165,29 @@ terraform apply
 ```
 
 The `mcp_url` output is the URL to add as a custom connector on claude.ai.
+
+### 4. Continuous deployment
+
+[.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) runs lint and tests on every
+pull request and push. On `main`, it then builds the image, pushes it to ghcr.io with the
+workflow's own token, and deploys it to the Container App. Azure sign-in uses OIDC: a
+managed identity trusts the repository's `production` environment and may only update the
+Container App. No secret is stored in GitHub. Terraform ignores the image after creation.
+
+Set the `github_variables` output as repository variables (not secrets):
+
+```bash
+cd infra
+terraform output -json github_variables \
+  | jq -r 'to_entries[] | "\(.key) \(.value)"' \
+  | while read -r name value; do gh variable set "$name" --body "$value"; done
+```
+
+If the ghcr.io package was first pushed by hand, allow the repository to write to it:
+package settings, *Manage Actions access*, add the repository with the *Write* role.
+
+Dependabot ([.github/dependabot.yml](.github/dependabot.yml)) proposes monthly updates of
+the actions (pinned by SHA), the Docker base images and the Python dependencies.
 
 claude.ai keeps its copy of the tool list, even in a new conversation: after changing tool
 descriptions or server instructions, reconnect the connector.

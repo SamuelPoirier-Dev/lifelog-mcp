@@ -180,6 +180,12 @@ resource "azurerm_container_app" "lifelog" {
       }
     }
   }
+
+  lifecycle {
+    # Deployments change the image (GitHub Actions, D66): var.image is only the image of
+    # the first creation, and an apply must not roll the app back to it.
+    ignore_changes = [template[0].container[0].image]
+  }
 }
 
 # --- Budget (D29) --------------------------------------------------------------------------

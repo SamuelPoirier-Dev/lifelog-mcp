@@ -4,7 +4,7 @@ variable "subscription_id" {
 }
 
 variable "image" {
-  description = "Container image of the app (public on ghcr.io)."
+  description = "Container image of the first creation; deployments then change it (D66)."
   type        = string
 }
 
@@ -28,4 +28,10 @@ variable "budget_start_date" {
   description = "First day of the first budget month (RFC 3339)."
   type        = string
   default     = "2026-10-01T00:00:00Z"
+}
+
+variable "github_repository" {
+  description = "GitHub repository allowed to deploy, as owner/name (D67)."
+  type        = string
+  default     = "SamuelPoirier-Dev/lifelog-mcp"
 }

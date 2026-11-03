@@ -16,7 +16,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée) · ❌ aba
 | 4 | Stockage : interface `Repository`, mémoire et Table Storage | ✅ |
 | 5 | Outils MCP métier | ✅ |
 | 6 | ~~API REST en lecture~~ (D65) | ❌ |
-| 7 | CI/CD GitHub Actions | ⬜ |
+| 7 | CI/CD GitHub Actions | 🟨 |
 | 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | ⬜ |
 
 Chaque étape = une proposition détaillée validée, une exécution vérifiée, une revue, puis
@@ -134,9 +134,16 @@ par jeton Bearer Entra et même liste blanche. Les données sont lues par des ag
 (dashboard hebdomadaire), qui passent par les outils MCP.
 
 ### 7. CI/CD GitHub Actions
-- CI sur PR et `main` : `ruff`, `pytest`.
-- CD sur `main` : build, push ghcr.io, mise à jour de la Container App via OIDC
-  (identité fédérée créée par Terraform).
+- Un workflow `.github/workflows/ci-cd.yml` : `test` (`ruff check`, `ruff format --check`,
+  `pytest`) sur chaque PR et push ; sur `main`, `build` (image `linux/amd64` poussée sur
+  ghcr.io avec le `GITHUB_TOKEN`, étiquettes `sha-<commit>` et `latest`) puis `deploy`.
+- `deploy` : connexion OIDC à Azure, `az containerapp update --image`, puis vérification
+  que `/mcp` répond 401 (attente du démarrage à froid).
+- Terraform (`infra/cicd.tf`) : identité managée `id-lifelog-github`, identité fédérée sur
+  l'environnement GitHub `production`, rôle « Container Apps Contributor » sur la seule
+  Container App (D67, D68) ; image ignorée après la création (D66).
+- Variables de dépôt `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
+- Actions épinglées par SHA, Dependabot mensuel (D69).
 
 ### 8. Finitions
 - README portfolio : architecture, lancer, tester, design des outils MCP, décisions, ce
@@ -305,7 +312,7 @@ seulement pendant les sessions), image et démarrage plus rapides.
 `oid` de la liste blanche assignés par Terraform. Un compte non assigné est refusé par
 Entra dès la connexion, avant la liste blanche du serveur (D32).
 
-**D38 — Push manuel sur ghcr.io avec un jeton d'accès personnel classique**
+**D38 — *(remplacée par l'étape 7)* Push manuel sur ghcr.io avec un jeton d'accès personnel classique**
 (`write:packages`, expiration courte, révoqué après usage) : ghcr.io refuse le jeton OAuth
 de GitHub CLI. À l'étape 7, GitHub Actions utilisera son `GITHUB_TOKEN`.
 
@@ -446,3 +453,25 @@ et à tester. INTENT.md la demandait pour un dashboard ; ce choix est assumé. P
 tard, si un programme sans Claude doit lire les données (page web, script, raccourci
 iOS) : le service est déjà indépendant de MCP, l'API s'ajouterait sans toucher à
 l'existant. FastAPI, qui n'héberge plus que l'app MCP, sera retiré à l'étape 8. Remplace D12.
+
+**D66 — Le déploiement change seulement l'image ; Terraform l'ignore après la création.**
+GitHub Actions fait `az containerapp update --image`, et la Container App porte
+`ignore_changes` sur l'image : un `terraform apply` ne revient pas à `var.image`, qui ne
+sert plus qu'à la première création. Écarté : `terraform apply` dans la CI, qui
+demanderait l'accès à l'état (avec ses secrets) et des droits sur Entra pour changer une
+image.
+
+**D67 — Identité de déploiement : identité managée « utilisateur » à identité fédérée,
+rôle « Container Apps Contributor » sur la seule Container App.** Aucun secret dans
+GitHub (OIDC) ; l'identité ne peut toucher ni au stockage, ni à Entra. Écarté : une
+inscription d'application Entra, en double avec celle de l'app.
+
+**D68 — Environnement GitHub `production` pour la tâche `deploy`.** L'identité fédérée
+ne fait confiance qu'à cet environnement du dépôt : une PR, un fork ou une autre branche
+ne peut pas déployer. Une approbation manuelle pourra s'y ajouter sans autre changement.
+
+**D69 — Actions épinglées par SHA, Dependabot mensuel** (actions, images Docker de base,
+dépendances `uv`, une PR groupée par écosystème). Dépôt public : un SHA ne peut pas être
+déplacé par un tiers, contrairement à une étiquette `v4`. Les PR de Dependabot passent
+par la tâche `test`. Remplace l'image versionnée à la main (`0.2.0-dev.N`) par
+l'étiquette du commit.

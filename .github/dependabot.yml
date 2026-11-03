@@ -1,0 +1,25 @@
+# Monthly updates (D69): GitHub Actions (pinned by SHA), Docker base images and Python
+# dependencies, one grouped pull request per ecosystem.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Base images of the Dockerfile (uv, Python).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
