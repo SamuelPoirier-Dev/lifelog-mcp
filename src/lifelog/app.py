@@ -1,4 +1,4 @@
-"""ASGI application: FastAPI hosting the MCP server.
+"""ASGI application: the MCP server in a Starlette app.
 
 Run locally with:
     LIFELOG_AUTH=none LIFELOG_STORAGE=memory uv run uvicorn lifelog.app:create_app --factory
@@ -8,9 +8,10 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
 from fastmcp.server.auth import AuthProvider
+from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.routing import Mount
 
 from lifelog.auth import AllowedUsersMiddleware, create_auth_provider
 from lifelog.categories import default_registry
@@ -46,8 +47,8 @@ def create_app(
     *,
     auth_provider: AuthProvider | None = None,
     repository: Repository | None = None,
-) -> FastAPI:
-    """Build the FastAPI app with the MCP server mounted at /mcp.
+) -> Starlette:
+    """Build the app serving the MCP server at /mcp (and the OAuth routes).
 
     `auth_provider` and `repository` replace the ones built from the settings (tests).
     """
@@ -70,7 +71,7 @@ def create_app(
     )
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
         # The MCP session manager needs its lifespan (startup/shutdown) to run.
         async with mcp_app.lifespan(app):
             try:
@@ -80,19 +81,7 @@ def create_app(
                 if close is not None:
                     await close()
 
-    # Interactive docs and the OpenAPI schema are disabled: they would be
-    # reachable without authentication.
-    app = FastAPI(
-        title="lifelog",
-        lifespan=lifespan,
-        docs_url=None,
-        redoc_url=None,
-        openapi_url=None,
-    )
-
     # Mounted at the root rather than at /mcp: the MCP app owns /mcp and the OAuth
-    # routes (/.well-known/..., /authorize, /token...) that must live at the root.
-    # Routes declared on `app` before this mount take priority.
-    app.mount("/", mcp_app)
-
-    return app
+    # routes (/.well-known/..., /authorize, /token...) that must live at the root (D23).
+    # Nothing else is served: no docs, no health route (D20).
+    return Starlette(lifespan=lifespan, routes=[Mount("/", app=mcp_app)])

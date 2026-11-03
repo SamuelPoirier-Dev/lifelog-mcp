@@ -1,4 +1,4 @@
-"""Full FastAPI app tested over HTTP, in-process (no socket, no uvicorn), without auth."""
+"""Full app tested over HTTP, in-process (no socket, no uvicorn), without auth."""
 
 from collections.abc import AsyncIterator
 

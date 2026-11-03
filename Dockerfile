@@ -33,4 +33,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
 USER app
 EXPOSE 8000
 
-CMD ["uvicorn", "lifelog.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+# No access log: URLs carry OAuth codes (/auth/callback?code=...) (D71).
+CMD ["uvicorn", "lifelog.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", \
+     "--no-access-log"]

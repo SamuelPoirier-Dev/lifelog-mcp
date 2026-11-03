@@ -17,7 +17,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée) · ❌ aba
 | 5 | Outils MCP métier | ✅ |
 | 6 | ~~API REST en lecture~~ (D65) | ❌ |
 | 7 | CI/CD GitHub Actions | ✅ |
-| 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | ⬜ |
+| 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | 🟨 |
 
 Chaque étape = une proposition détaillée validée, une exécution vérifiée, une revue, puis
 un commit sur demande.
@@ -238,6 +238,7 @@ des données).
 
 **D20 — Aucun endpoint public hors MCP : pas de `/health`, et `/docs`, `/redoc`,
 `/openapi.json` de FastAPI désactivés.** Ils seraient accessibles sans authentification.
+Depuis le retrait de FastAPI (D71), ces routes n'existent plus du tout.
 Container Apps vérifie le conteneur par une sonde TCP. Seuls les endpoints de découverte
 OAuth (`/.well-known/...`) seront publics à l'étape 2, comme l'exige le protocole.
 Un test vérifie que ces routes renvoient 404.
@@ -249,7 +250,8 @@ Un test vérifie que ces routes renvoient 404.
 **D23 — L'app MCP est montée à la racine de FastAPI (`app.mount("/", ...)`), et sert
 elle-même `/mcp`.** Monter sur `/mcp` aurait donné `/mcp/mcp` ou une redirection, et les
 routes OAuth de l'étape 2 doivent être à la racine. Les routes FastAPI (`/api/...`)
-déclarées avant le montage restent prioritaires.
+déclarées avant le montage restent prioritaires. Depuis l'étape 8, le montage se fait dans
+une app Starlette (D71).
 
 **D24 — Application construite par une fonction `create_app(settings)` (« factory »).**
 Les tests créent une app isolée avec leur propre configuration ; Uvicorn l'appelle avec
@@ -484,3 +486,12 @@ dépôts récents envoient le nom accompagné des identifiants numériques du co
 dépôt ; le premier déploiement a échoué avec le format classique (`owner/name`). Plus
 sûr : après un renommage, un autre compte qui reprendrait l'ancien nom n'obtiendrait pas
 l'identité.
+
+**D71 — Starlette au lieu de FastAPI, sans journal des accès.** Depuis l'abandon de l'API
+REST (D65), FastAPI n'hébergeait que l'app MCP, elle-même une app Starlette : une
+dépendance en moins et aucune page de documentation à désactiver. Les logs ne contiennent
+pas de données personnelles : FastMCP n'écrit ni les arguments des outils (seulement le
+nombre et le type des erreurs de validation) ni le texte de nos erreurs prévues. Seul le
+journal des accès d'uvicorn écrivait les URL complètes, dont les codes OAuth du callback :
+désactivé (`--no-access-log`). Les logs ne sont de toute façon pas conservés (pas de Log
+Analytics).
