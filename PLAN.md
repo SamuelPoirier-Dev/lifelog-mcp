@@ -495,3 +495,22 @@ nombre et le type des erreurs de validation) ni le texte de nos erreurs prévues
 journal des accès d'uvicorn écrivait les URL complètes, dont les codes OAuth du callback :
 désactivé (`--no-access-log`). Les logs ne sont de toute façon pas conservés (pas de Log
 Analytics).
+
+**D72 — Sauvegarde hebdomadaire par GitHub Actions, dans un fichier daté.** Chaque
+dimanche, un workflow exporte la table (entités brutes, une ligne JSON chacune) vers
+`entries-AAAA-MM-JJ.jsonl` dans le conteneur privé `backups` du compte de données, déjà
+protégé par son verrou (D58). Un fichier par semaine plutôt qu'un blob versionné : plus
+simple pour la même protection ; tous les fichiers sont gardés (quelques Ko chacun) ;
+suppression réversible de 30 jours. Identité séparée (`id-lifelog-backup`, environnement
+GitHub `backup`) : elle lit la table et écrit les sauvegardes, l'identité de déploiement
+ne lit toujours pas les données. La restauration (`python -m lifelog.backup restore`)
+insère ou remplace les entrées du fichier sans toucher aux autres. Les entrées transitent
+par un runner GitHub éphémère, jamais dans les logs ni dans les artefacts (dépôt public).
+Limite : GitHub désactive les workflows planifiés après 60 jours sans activité.
+
+**D73 — Mise en veille après 30 min d'inactivité au lieu de 5.** Mesuré : 48 s à froid,
+0,09 s à chaud ; Python démarre en 0,5 s, le reste est l'allocation par Azure et le
+téléchargement de l'image, que le code ne peut pas réduire. Une conversation de suivi dans
+la demi-heure évite donc l'attente. Coût : la part gratuite couvre environ 200 h actives
+par mois à 0,25 vCPU et 0,5 Go. Coûts réels mesurés depuis le 1er octobre : 0,0002 $ CA.
+Complète D36.

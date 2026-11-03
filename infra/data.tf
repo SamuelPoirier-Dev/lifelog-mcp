@@ -13,6 +13,16 @@ resource "azurerm_storage_account" "data" {
   shared_access_key_enabled = false
   # The Azure portal browses the data with the signed-in identity, not a key.
   default_to_oauth_authentication = true
+
+  # A deleted backup (or container) can be recovered for 30 days (D72).
+  blob_properties {
+    delete_retention_policy {
+      days = 30
+    }
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
 }
 
 resource "azurerm_storage_table" "entries" {

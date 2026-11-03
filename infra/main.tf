@@ -109,6 +109,9 @@ resource "azurerm_container_app" "lifelog" {
   template {
     min_replicas = 0
     max_replicas = 1
+    # Stays up 30 min after the last request instead of 5: a follow-up conversation
+    # skips the ~48 s cold start, still within the free grant (D36, D73).
+    cooldown_period_in_seconds = 1800
 
     container {
       name   = local.app_name

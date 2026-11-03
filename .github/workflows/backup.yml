@@ -1,0 +1,43 @@
+# Weekly export of the entries table to a dated file in the "backups" container (D72).
+name: Backup
+
+on:
+  schedule:
+    # Sundays 08:00 UTC (3 or 4 a.m. in Québec).
+    - cron: "0 8 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # Only jobs in this environment can sign in with the backup identity.
+    environment: backup
+    concurrency: backup
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ACCOUNT: ${{ vars.DATA_STORAGE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --locked --no-dev
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Export and upload
+        # The entries never appear in the job log, only their count.
+        run: |
+          name="entries-$(date -u +%F).jsonl"
+          file="$RUNNER_TEMP/$name"
+          uv run --no-sync python -m lifelog.backup export --account "$ACCOUNT" --output "$file"
+          az storage blob upload --auth-mode login --account-name "$ACCOUNT" \
+            --container-name backups --name "$name" --file "$file" --overwrite --only-show-errors \
+            --output none

@@ -191,3 +191,25 @@ the actions (pinned by SHA), the Docker base images and the Python dependencies.
 
 claude.ai keeps its copy of the tool list, even in a new conversation: after changing tool
 descriptions or server instructions, reconnect the connector.
+
+### 5. Backups
+
+[.github/workflows/backup.yml](.github/workflows/backup.yml) exports the entries table
+every Sunday (or on demand: *Actions → Backup → Run workflow*) to a dated file,
+`entries-YYYY-MM-DD.jsonl`, in the private `backups` container of the data account. Each
+line is an entity as stored. The workflow signs in with its own identity, through the
+`backup` environment: it may read the table and write the backups, nothing else. Deleted
+backups can be recovered for 30 days.
+
+GitHub disables scheduled workflows after 60 days without activity in the repository (it
+sends an email first): merging the Dependabot pull requests is enough to keep it running.
+
+To restore, download a backup and write it back. Entries of the file are inserted or
+replaced; other entries are left untouched.
+
+```bash
+ACCOUNT=$(terraform -chdir=infra output -raw data_storage_account)
+az storage blob download --auth-mode login --account-name "$ACCOUNT" \
+  --container-name backups --name entries-YYYY-MM-DD.jsonl --file entries.jsonl
+uv run python -m lifelog.backup restore --account "$ACCOUNT" --input entries.jsonl
+```
