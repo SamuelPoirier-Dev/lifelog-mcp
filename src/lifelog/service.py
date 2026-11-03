@@ -1,4 +1,4 @@
-"""Business operations shared by the MCP tools and the REST API.
+"""Business operations behind the MCP tools.
 
 The service validates input with the category, resolves periods in Québec time and
 talks to the storage. It knows nothing about MCP or HTTP. Timestamps come in and go out

@@ -2,7 +2,7 @@
 
 Personal lifelog exposed as a remote [MCP](https://modelcontextprotocol.io) server, so that
 everyday entries (habits, health…) can be recorded and queried in plain language from the
-Claude app, plus a read-only REST API for dashboards.
+Claude app. Other Claude agents (a weekly dashboard, imports) use the same tools.
 
 > Work in progress — see [PLAN.md](PLAN.md) (in French) for the roadmap and the decision log.
 

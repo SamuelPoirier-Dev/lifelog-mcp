@@ -89,8 +89,6 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
-    # Shared by the MCP tools and the REST API (step 6).
-    app.state.service = service
 
     # Mounted at the root rather than at /mcp: the MCP app owns /mcp and the OAuth
     # routes (/.well-known/..., /authorize, /token...) that must live at the root.

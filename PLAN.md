@@ -1,12 +1,12 @@
 # PLAN — lifelog-mcp
 
 Serveur MCP personnel de journalisation (habitudes, santé…), utilisable comme connecteur
-personnalisé claude.ai, avec une API REST en lecture. Voir [INTENT.md](INTENT.md) pour la
+personnalisé claude.ai. L'API REST en lecture prévue au départ est abandonnée (D65). Voir [INTENT.md](INTENT.md) pour la
 demande complète.
 
 ## Étapes
 
-Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée)
+Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée) · ❌ abandonnée
 
 | # | Étape | Statut |
 |---|---|---|
@@ -15,7 +15,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée)
 | 3 | Modèle générique et catégorie `drinks` (logique pure) | ✅ |
 | 4 | Stockage : interface `Repository`, mémoire et Table Storage | ✅ |
 | 5 | Outils MCP métier | ✅ |
-| 6 | API REST en lecture | ⬜ |
+| 6 | ~~API REST en lecture~~ (D65) | ❌ |
 | 7 | CI/CD GitHub Actions | ⬜ |
 | 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | ⬜ |
 
@@ -96,7 +96,7 @@ seulement l'outil `ping`.
   (identité managée) : table `entries`, `PartitionKey` = catégorie, `RowKey` = heure au
   format fixe + identifiant (D57), écriture en lot transactionnelle, attributs en JSON.
 - Couche service (`log_entries`, `list_entries`, `get_stats`, `list_categories`) partagée
-  par MCP et REST — `service.py`. Validation de tout le lot avant écriture, erreurs
+  par les outils MCP — `service.py`. Validation de tout le lot avant écriture, erreurs
   numérotées.
 - `LIFELOG_STORAGE` = `table` (défaut) ou `memory` ; `LIFELOG_TABLE_ACCOUNT` obligatoire
   en mode `table` (D51).
@@ -128,10 +128,10 @@ seulement l'outil `ping`.
   la semaine est juste. claude.ai gardait les anciennes descriptions des outils jusqu'à la
   reconnexion du connecteur (D64).
 
-### 6. API REST en lecture
-- `GET /api/categories`, `GET /api/entries`, `GET /api/stats`.
-- Authentification par jeton Bearer Entra + même liste blanche.
-- Tests (requêtes authentifiées, refus sans jeton ou avec un autre utilisateur).
+### 6. ~~API REST en lecture~~ — abandonnée (D65)
+Prévue au départ : `GET /api/categories`, `/api/entries`, `/api/stats`, authentification
+par jeton Bearer Entra et même liste blanche. Les données sont lues par des agents Claude
+(dashboard hebdomadaire), qui passent par les outils MCP.
 
 ### 7. CI/CD GitHub Actions
 - CI sur PR et `main` : `ruff`, `pytest`.
@@ -139,12 +139,15 @@ seulement l'outil `ping`.
   (identité fédérée créée par Terraform).
 
 ### 8. Finitions
-- README portfolio : architecture, lancer, tester, design de l'API, décisions, ce qu'on
-  ferait avec plus de temps.
+- README portfolio : architecture, lancer, tester, design des outils MCP, décisions, ce
+  qu'on ferait avec plus de temps (dont l'API REST, D65).
 - Revue des logs (niveau, contenu sans données personnelles) et des coûts.
 - Démarrage à froid (D36) : mesurer, puis allonger le délai de mise en veille et/ou
   accélérer le démarrage.
 - Sauvegarde des entrées (D58) : export régulier de la table vers un blob versionné.
+- Refactorisation : retirer FastAPI, qui n'héberge plus que l'app MCP depuis l'abandon de
+  l'API REST (D65). L'app Starlette de FastMCP suffit ; déploiement par la CI/CD de
+  l'étape 7.
 
 ## Journal des décisions
 
@@ -194,13 +197,13 @@ propose pas de correction impossible (D63) ; une erreur se corrige dans le porta
 Convention du code en anglais ; l'utilisateur converse en français et Claude fait le lien
 grâce aux exemples (« bière », « verre de vin », « shooter », « ce soir »).
 
-**D12 — API REST : `GET /api/categories`, `/api/entries`, `/api/stats` avec paramètres
+**D12 — *(abandonnée, voir D65)* API REST : `GET /api/categories`, `/api/entries`, `/api/stats` avec paramètres
 `category`, `start`, `end`.**
 
 **D13 — Un seul utilisateur : app Entra limitée au tenant de l'abonnement + liste blanche
 de l'identifiant (`oid`) côté serveur.** L'utilisateur se connecte avec un compte Microsoft
-personnel (invité du tenant par défaut) ; à confirmer à l'étape 2. L'API REST valide les
-jetons Entra avec la même liste blanche.
+personnel (invité du tenant par défaut) ; à confirmer à l'étape 2. L'API REST prévue
+devait valider les jetons Entra avec la même liste blanche (abandonnée, D65).
 
 **D14 — État OAuth persistant.**
 Le proxy OAuth de FastMCP garde les clients enregistrés et les jetons ; en mémoire, ils
@@ -433,3 +436,13 @@ reconnecter le connecteur claude.ai.** claude.ai garde une copie de la liste des
 même dans une nouvelle conversation : le serveur n'a reçu aucune demande de liste après
 le déploiement, et Claude citait l'ancienne description. La reconnexion force la
 relecture.
+
+**D65 — Pas d'API REST : l'étape 6 est abandonnée.** Les données sont lues par Claude :
+en conversation, et chaque semaine par l'agent personnel qui construit le dashboard santé.
+Cet agent utilise le connecteur lifelog comme l'app iPhone ; les outils renvoient du JSON
+structuré (`get_stats`, `list_entries`), sans interprétation de texte. Une API REST
+n'aurait aucun utilisateur et ajouterait un second point d'entrée authentifié à protéger
+et à tester. INTENT.md la demandait pour un dashboard ; ce choix est assumé. Pour plus
+tard, si un programme sans Claude doit lire les données (page web, script, raccourci
+iOS) : le service est déjà indépendant de MCP, l'API s'ajouterait sans toucher à
+l'existant. FastAPI, qui n'héberge plus que l'app MCP, sera retiré à l'étape 8. Remplace D12.
