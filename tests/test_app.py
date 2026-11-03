@@ -17,11 +17,11 @@ async def server() -> AsyncIterator[ASGIServer]:
         yield ASGIServer(url=f"http://127.0.0.1{MCP_PATH}", app=app, transport_type="http")
 
 
-async def test_mcp_client_calls_ping_over_http(server: ASGIServer):
+async def test_mcp_client_calls_a_tool_over_http(server: ASGIServer):
     async with server.client() as client:
-        result = await client.call_tool("ping")
+        result = await client.call_tool("list_categories")
 
-    assert result.data == "pong"
+    assert result.structured_content["result"][0]["name"] == "drinks"
 
 
 @pytest.mark.parametrize("path", ["/", "/docs", "/redoc", "/openapi.json", "/health"])

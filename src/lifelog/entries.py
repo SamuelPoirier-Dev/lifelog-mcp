@@ -16,7 +16,8 @@ class Entry(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     category: str
-    # Stored in UTC; a time without a time zone is Québec time (D8).
+    # Stored in UTC. Entries from users arrive in UTC (D60); in code, a time without a
+    # time zone is Québec time (D8).
     timestamp: datetime
     # How many units: for drinks, the number of containers (D3). Decimals allowed (D42).
     quantity: float = Field(default=1, gt=0)

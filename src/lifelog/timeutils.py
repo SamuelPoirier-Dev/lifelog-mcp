@@ -1,4 +1,4 @@
-"""Time helpers: everything the user sees is in Québec time, everything stored is UTC.
+"""Time helpers: days and weeks are in Québec time, everything stored is UTC.
 
 - A time without a time zone is Québec time (D8).
 - A day is a calendar day in Québec, midnight to midnight (D5).

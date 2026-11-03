@@ -6,6 +6,19 @@ Claude app, plus a read-only REST API for dashboards.
 
 > Work in progress — see [PLAN.md](PLAN.md) (in French) for the roadmap and the decision log.
 
+## MCP tools
+
+| Tool | What it does |
+|---|---|
+| `list_categories` | Categories, what they are for, and the attributes their entries take. |
+| `log_entry` | Records 1 to 100 entries in a category, all or nothing. |
+| `list_entries` | Entries of a category over a period (current week by default). |
+| `get_stats` | Category-specific statistics over a period (current week by default). |
+
+Timestamps go in and come out in UTC, since the user may be travelling. Days and weeks
+(periods, stats) are calendar days and ISO weeks in Québec time. The first category is
+`drinks`, counted in Canadian standard drinks (13.45 g of alcohol).
+
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.13 automatically if needed)
@@ -150,3 +163,6 @@ terraform apply
 ```
 
 The `mcp_url` output is the URL to add as a custom connector on claude.ai.
+
+claude.ai keeps its copy of the tool list, even in a new conversation: after changing tool
+descriptions or server instructions, reconnect the connector.

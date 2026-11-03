@@ -65,7 +65,9 @@ def create_app(
     middleware = []
     if auth_provider is not None:
         middleware.append(Middleware(AllowedUsersMiddleware, allowed_oids=settings.allowed_oids))
-    mcp_app = create_mcp_server(auth_provider).http_app(path=MCP_PATH, middleware=middleware)
+    mcp_app = create_mcp_server(service, auth_provider).http_app(
+        path=MCP_PATH, middleware=middleware
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -87,7 +89,7 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
-    # Shared by the MCP tools (step 5) and the REST API (step 6).
+    # Shared by the MCP tools and the REST API (step 6).
     app.state.service = service
 
     # Mounted at the root rather than at /mcp: the MCP app owns /mcp and the OAuth

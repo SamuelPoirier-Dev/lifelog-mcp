@@ -14,7 +14,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée)
 | 2 | Infra Azure + authentification Entra (levée du risque OAuth) | ✅ |
 | 3 | Modèle générique et catégorie `drinks` (logique pure) | ✅ |
 | 4 | Stockage : interface `Repository`, mémoire et Table Storage | ✅ |
-| 5 | Outils MCP métier | ⬜ |
+| 5 | Outils MCP métier | ✅ |
 | 6 | API REST en lecture | ⬜ |
 | 7 | CI/CD GitHub Actions | ⬜ |
 | 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | ⬜ |
@@ -109,10 +109,24 @@ seulement l'outil `ping`.
   outils de l'étape 5.
 
 ### 5. Outils MCP métier
-- `log_entry`, `list_entries`, `get_stats`, `list_categories` ; retrait de `ping`.
-- Descriptions pensées pour relier une phrase en français à la bonne catégorie.
-- Tests via le client MCP en mémoire.
+- `log_entry`, `list_entries`, `get_stats`, `list_categories` ; retrait de `ping`. Outils
+  minces au-dessus du service — `mcp_server.py`.
+- Catégories en liste fermée dans les schémas (D59) ; heures en UTC en entrée et en sortie
+  (D60) ; erreurs de validation transmises, erreurs inattendues masquées (D61).
+- Descriptions pensées pour relier une phrase en français à la bonne catégorie : la
+  description de `log_entry` reprend celle de chaque catégorie et le schéma de ses
+  attributs, pour enregistrer sans appel préalable à `list_categories`.
+- Tests via le client MCP en mémoire, dont la catégorie fictive proposée sans toucher aux
+  outils.
 - Déploiement et vérification des critères de réussite depuis l'iPhone.
+- Import de l'historique Todoist par Cowork, sans code dédié (D62).
+- Premier essai sur l'iPhone : Claude a repris le volume et le taux d'une entrée
+  précédente au lieu de les demander, puis proposé une correction impossible. Consigne
+  renforcée (D63).
+- Résultat : depuis l'iPhone, « ajoute 2 bières » fait demander le volume et le taux,
+  « la même que tantôt » reprend les valeurs, une correction est refusée, et le total de
+  la semaine est juste. claude.ai gardait les anciennes descriptions des outils jusqu'à la
+  reconnexion du connecteur (D64).
 
 ### 6. API REST en lecture
 - `GET /api/categories`, `GET /api/entries`, `GET /api/stats`.
@@ -165,13 +179,16 @@ inclus.** Les jours futurs ne comptent pas.
 **D7 — Période : `start`/`end` optionnels, semaine en cours par défaut.**
 Claude convertit les expressions (« ce mois-ci ») en dates.
 
-**D8 — Heures stockées en UTC ; heure sans fuseau = heure de Québec ; réponses en heure
-de Québec.**
+**D8 — Heures stockées en UTC ; jours et semaines en heure de Québec.** Dans le code,
+une heure sans fuseau est l'heure de Québec. Les outils reçoivent et renvoient de l'UTC
+(D60).
 
 **D9 — `log_entry` accepte une liste d'entrées d'une même catégorie, validée en entier
 avant écriture (tout ou rien).**
 
-**D10 — Pas de `delete_entry` pour l'instant.** Hors de la demande ; candidat pour plus tard.
+**D10 — Pas de `delete_entry` ni de modification pour l'instant.** Hors de la demande ;
+candidat pour plus tard. Les instructions du serveur le disent à Claude, pour qu'il ne
+propose pas de correction impossible (D63) ; une erreur se corrige dans le portail Azure.
 
 **D11 — Noms et descriptions d'outils en anglais, avec des exemples en français.**
 Convention du code en anglais ; l'utilisateur converse en français et Claude fait le lien
@@ -380,3 +397,39 @@ JSON (jamais filtrés), pas de restauration à un instant passé (D58). L'interf
 données précieuses) : aucun coût fixe, un rôle évident chacun. Pas de restauration à un
 instant passé dans Table Storage : un export régulier vers un blob versionné est prévu
 à l'étape 8.
+
+**D59 — Catégories en liste fermée dans le schéma des outils** (`enum`, ou `const` tant
+qu'il n'y en a qu'une), construite à partir du registre. Claude voit les valeurs
+possibles et ne peut pas en inventer ; une nouvelle catégorie s'y ajoute sans toucher aux
+outils.
+
+**D60 — Heures des outils en UTC, en entrée comme en sortie.** L'utilisateur peut être
+hors de Québec : Claude convertit depuis le fuseau où il se trouve, et une heure sans
+fuseau ou avec un autre décalage est refusée plutôt que devinée. Sans heure, l'entrée
+prend l'heure du serveur. Les jours, semaines et dates `start`/`end` restent ceux de
+Québec (D5) : des stats stables, peu importe où on les consulte. Remplace la partie
+« réponses en heure de Québec » de D8.
+
+**D61 — Erreurs : validation transmise telle quelle, le reste masqué.** Lot invalide,
+période refusée ou catégorie inconnue : le message part vers Claude, qui corrige ou pose
+la question. Toute autre erreur (stockage, réseau…) arrive comme un message générique ;
+le détail reste dans les logs (`mask_error_details` de FastMCP).
+
+**D62 — Historique Todoist importé par Cowork, sans code dédié.** Environ 50 entrées :
+Cowork les lit avec le connecteur Todoist, les convertit en UTC et les envoie avec
+`log_entry` (un ou deux lots). INTENT.md classait la migration hors portée parce qu'elle
+aurait demandé du code ; ce n'est plus le cas.
+
+**D63 — Claude n'envoie que les attributs donnés par l'utilisateur.** Le serveur ne peut
+pas distinguer une valeur dite d'une valeur reprise d'une entrée précédente : les
+instructions du serveur et la description de `log_entry` interdisent de réutiliser des
+valeurs (sauf « la même », « pareil ») et de deviner. Un champ laissé vide déclenche le
+refus qui dit quoi demander (D4). Elles disent aussi qu'une entrée ne peut pas être
+corrigée (D10). Une consigne, pas une garantie : à revoir si l'essai réel montre que ça
+ne suffit pas.
+
+**D64 — Après un changement des descriptions d'outils ou des instructions du serveur,
+reconnecter le connecteur claude.ai.** claude.ai garde une copie de la liste des outils,
+même dans une nouvelle conversation : le serveur n'a reçu aucune demande de liste après
+le déploiement, et Claude citait l'ancienne description. La reconnexion force la
+relecture.

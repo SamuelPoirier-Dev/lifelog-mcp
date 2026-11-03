@@ -20,7 +20,7 @@ def service() -> LifelogService:
 async def test_two_beers_tonight_then_the_weekly_total(service: LifelogService):
     beer = {"type": "beer", "volume_ml": 341, "abv_percent": 5}
     await service.log_entries(
-        "drinks", [{"quantity": 2, "timestamp": "2026-11-05T20:00", "attributes": beer}]
+        "drinks", [{"quantity": 2, "timestamp": "2026-11-06T01:00Z", "attributes": beer}]
     )
 
     stats = await service.get_stats("drinks")
@@ -36,12 +36,20 @@ async def test_timestamp_defaults_to_now(service: LifelogService):
     assert entry.quantity == 1
 
 
-async def test_timestamp_without_time_zone_is_quebec_time(service: LifelogService):
+async def test_utc_timestamp_is_stored_as_is(service: LifelogService):
     [entry] = await service.log_entries(
-        "drinks", [{"timestamp": "2026-11-04T21:30", "attributes": {"type": "wine"}}]
+        "drinks", [{"timestamp": "2026-11-05T02:30:00+00:00", "attributes": {"type": "wine"}}]
     )
 
     assert entry.timestamp == datetime(2026, 11, 5, 2, 30, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("timestamp", ["2026-11-04T21:30", "2026-11-04T21:30-05:00"])
+async def test_timestamp_must_be_in_utc(service: LifelogService, timestamp: str):
+    with pytest.raises(InvalidEntriesError, match="entry 1: timestamp: must be in UTC"):
+        await service.log_entries(
+            "drinks", [{"timestamp": timestamp, "attributes": {"type": "wine"}}]
+        )
 
 
 async def test_defaults_of_the_category_are_stored(service: LifelogService):
@@ -87,9 +95,9 @@ async def test_list_entries_defaults_to_the_current_week(service: LifelogService
     await service.log_entries(
         "drinks",
         [
-            {"timestamp": "2026-11-01T20:00", "attributes": wine},  # previous Sunday
-            {"timestamp": "2026-11-03T20:00", "attributes": wine},
-            {"timestamp": "2026-11-02T00:30", "attributes": wine},  # Monday 00:30
+            {"timestamp": "2026-11-02T01:00Z", "attributes": wine},  # Sunday 20:00 in Québec
+            {"timestamp": "2026-11-04T01:00Z", "attributes": wine},
+            {"timestamp": "2026-11-02T05:30Z", "attributes": wine},  # Monday 00:30 in Québec
         ],
     )
 
@@ -104,7 +112,7 @@ async def test_list_entries_defaults_to_the_current_week(service: LifelogService
 
 async def test_list_entries_of_a_given_period(service: LifelogService):
     await service.log_entries(
-        "drinks", [{"timestamp": "2026-10-15T20:00", "attributes": {"type": "wine"}}]
+        "drinks", [{"timestamp": "2026-10-16T00:00Z", "attributes": {"type": "wine"}}]
     )
 
     page = await service.list_entries("drinks", start=date(2026, 10, 1), end=date(2026, 10, 31))

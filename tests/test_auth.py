@@ -65,11 +65,11 @@ async def entra_server() -> AsyncIterator[ASGIServer]:
         yield server
 
 
-async def test_allowed_user_calls_ping(static_token_server: ASGIServer):
+async def test_allowed_user_calls_a_tool(static_token_server: ASGIServer):
     async with static_token_server.client(auth="allowed-token") as client:
-        result = await client.call_tool("ping")
+        result = await client.call_tool("list_categories")
 
-    assert result.data == "pong"
+    assert result.structured_content["result"][0]["name"] == "drinks"
 
 
 @pytest.mark.parametrize("token", ["other-token", "no-oid-token"])

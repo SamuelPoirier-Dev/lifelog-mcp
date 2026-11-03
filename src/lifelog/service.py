@@ -1,14 +1,15 @@
 """Business operations shared by the MCP tools and the REST API.
 
 The service validates input with the category, resolves periods in Québec time and
-talks to the storage. It knows nothing about MCP or HTTP.
+talks to the storage. It knows nothing about MCP or HTTP. Timestamps come in and go out
+in UTC (D60).
 """
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from lifelog.categories import CategoryRegistry
 from lifelog.entries import Entry
@@ -17,15 +18,30 @@ from lifelog.timeutils import Period, local_today
 
 
 class NewEntry(BaseModel):
-    """An entry to record, as received from a tool or an API call."""
+    """An entry to record."""
 
     model_config = ConfigDict(extra="forbid")
 
-    # Defaults to now; a time without a time zone is Québec time (D8).
-    timestamp: datetime | None = None
-    quantity: float = Field(default=1, gt=0)
+    timestamp: datetime | None = Field(
+        default=None,
+        description='When it happened, in UTC (e.g. "2026-11-03T01:00:00Z"). Defaults to now.',
+    )
+    quantity: float = Field(default=1, gt=0, description="How many (decimals allowed).")
     note: str | None = Field(default=None, max_length=500)
-    attributes: dict[str, Any] = Field(default_factory=dict)
+    attributes: dict[str, Any] = Field(
+        default_factory=dict, description="Attributes of the category (see its schema)."
+    )
+
+    @field_validator("timestamp")
+    @classmethod
+    def _require_utc(cls, value: datetime | None) -> datetime | None:
+        """UTC only: the user may be away from Québec, the time zone must not be guessed (D60)."""
+        if value is not None and value.utcoffset() != timedelta(0):
+            raise ValueError(
+                "must be in UTC (e.g. 2026-11-03T01:00:00Z): "
+                "convert from the user's current time zone"
+            )
+        return value
 
 
 class InvalidEntriesError(ValueError):
@@ -58,6 +74,10 @@ class LifelogService:
         self._repository = repository
         self._registry = registry
         self._now = now
+
+    @property
+    def registry(self) -> CategoryRegistry:
+        return self._registry
 
     def list_categories(self) -> list[CategoryInfo]:
         return [
