@@ -17,7 +17,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée) · ❌ aba
 | 5 | Outils MCP métier | ✅ |
 | 6 | ~~API REST en lecture~~ (D65) | ❌ |
 | 7 | CI/CD GitHub Actions | ✅ |
-| 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | 🟨 |
+| 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | ✅ |
 
 Chaque étape = une proposition détaillée validée, une exécution vérifiée, une revue, puis
 un commit sur demande.
@@ -157,6 +157,14 @@ par jeton Bearer Entra et même liste blanche. Les données sont lues par des ag
 - Refactorisation : retirer FastAPI, qui n'héberge plus que l'app MCP depuis l'abandon de
   l'API REST (D65). L'app Starlette de FastMCP suffit ; déploiement par la CI/CD de
   l'étape 7.
+- Résultat :
+  - FastAPI remplacé par Starlette, journal des accès coupé ; logs vérifiés sans données
+    personnelles (D71).
+  - Démarrage à froid mesuré (48 s, presque tout côté Azure) ; mise en veille après
+    30 min (D73). Coûts réels : 0,0002 $ CA depuis le 1er octobre.
+  - Sauvegarde hebdomadaire par GitHub Actions, restauration testée sur la vraie table
+    (D72).
+  - README portfolio ; version 1.0.0.
 
 ## Journal des décisions
 

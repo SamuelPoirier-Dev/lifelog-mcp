@@ -1,10 +1,61 @@
 # lifelog-mcp
 
-Personal lifelog exposed as a remote [MCP](https://modelcontextprotocol.io) server, so that
-everyday entries (habits, health…) can be recorded and queried in plain language from the
-Claude app. Other Claude agents (a weekly dashboard, imports) use the same tools.
+[![CI/CD](https://github.com/SamuelPoirier-Dev/lifelog-mcp/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/SamuelPoirier-Dev/lifelog-mcp/actions/workflows/ci-cd.yml)
 
-> Work in progress — see [PLAN.md](PLAN.md) (in French) for the roadmap and the decision log.
+A personal lifelog you talk to. It is a remote [MCP](https://modelcontextprotocol.io)
+server, added as a custom connector in the Claude app: everyday entries (habits,
+health…) are recorded and queried in plain language, mostly from an iPhone. Other Claude
+agents use the same tools, such as a weekly health dashboard and a one-off import of past
+entries from Todoist.
+
+The first category is alcoholic drinks, counted in Canadian standard drinks (13.45 g of
+alcohol).
+
+```text
+Me      2 bières ce soir
+Claude  What volume and alcohol content? (355 ml, 5 %?)
+Me      473 ml, 5,5 %
+Claude  Logged: 2 beers, 473 ml at 5.5 % (3.1 standard drinks).
+        This week: 5.2 standard drinks, 4 days without a drink.
+```
+
+*(An illustrative exchange: the user writes in French, Claude does the rest.)*
+
+Built as a portfolio project: a small scope, done end to end. Python 3.13, FastMCP,
+Azure Container Apps, Azure Table Storage, Microsoft Entra ID, Terraform and GitHub
+Actions. Every step and decision is logged in [PLAN.md](PLAN.md) (in French).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    user["Claude app<br/>(iPhone, web)"] -- "MCP over HTTPS<br/>OAuth token" --> app
+    user -. "sign-in" .-> entra["Microsoft Entra ID<br/>single tenant"]
+    subgraph azure["Azure (canadacentral)"]
+        app["Container Apps<br/>FastMCP server<br/>scale to zero"]
+        oauth[("Table Storage<br/>OAuth state, encrypted")]
+        data[("Data storage account<br/>entries table, backup blobs")]
+        app -- "managed identity" --> oauth
+        app -- "managed identity" --> data
+    end
+    app -. "OAuth proxy" .-> entra
+    gh["GitHub Actions"] -- "OIDC: deploy" --> app
+    gh -- "OIDC: weekly backup" --> data
+    gh -- "image" --> ghcr["ghcr.io"]
+    ghcr --> app
+```
+
+- **One process**: a FastMCP server in a Starlette app, served by uvicorn. FastMCP's OAuth
+  proxy lets claude.ai sign in with Microsoft Entra ID.
+- **Layers**: thin MCP tools ([mcp_server.py](src/lifelog/mcp_server.py)) over a service
+  ([service.py](src/lifelog/service.py)), over a `Repository` interface with an in-memory
+  and an Azure Table Storage implementation ([storage/](src/lifelog/storage/)).
+- **Categories are code**: each one is a module defining its attributes (a Pydantic
+  model), its defaults and its statistics ([categories/](src/lifelog/categories/)). Adding
+  one means writing a module and registering it; the tools and their schemas pick it up.
+  The tests prove it with a fake category.
+- **Storage**: one table, one partition per category, and a row key starting with the UTC
+  timestamp, so a period is a key range read in time order.
 
 ## MCP tools
 
@@ -15,9 +66,79 @@ Claude app. Other Claude agents (a weekly dashboard, imports) use the same tools
 | `list_entries` | Entries of a category over a period (current week by default). |
 | `get_stats` | Category-specific statistics over a period (current week by default). |
 
-Timestamps go in and come out in UTC, since the user may be travelling. Days and weeks
-(periods, stats) are calendar days and ISO weeks in Québec time. The first category is
-`drinks`, counted in Canadian standard drinks (13.45 g of alcohol).
+Designing tools for a model, not a programmer, drove most decisions:
+
+- **One call to log.** The description of `log_entry` includes each category's purpose and
+  the JSON schema of its attributes. Claude can log "2 bières" without calling
+  `list_categories` first.
+- **Closed lists.** Categories are an `enum` in the schemas, so Claude cannot invent one.
+- **Never guess.** Claude sends only the values the user stated; anything missing is left
+  out. The server then answers with an error that says what to ask, such as the volume of
+  a beer. Defaults apply only where they are safe (a glass of wine is 142 ml at 12 %). "La même que tantôt" reuses the previous values on purpose.
+- **Errors meant for the model.** Validation errors go back word for word, so Claude can
+  fix the call or ask the user. Any other error is masked, and its details stay in the
+  logs.
+- **Time.** Timestamps go in and come out in UTC: the user may be travelling, and a time
+  in another zone (or without one) is refused rather than guessed. Days and weeks (periods, stats) stay
+  in Québec time, so stats do not depend on where they are read.
+- **No edit or delete, on purpose.** Claude confirms with the user when in doubt and does
+  not offer corrections it cannot make.
+- **Annotations.** Tools say whether they are read-only, destructive or idempotent, so the
+  client can decide when to ask for confirmation.
+
+One lesson learned: claude.ai keeps its copy of the tool definitions, even in a new
+conversation. A changed description takes effect only after reconnecting the connector.
+
+## Security
+
+- **Sign-in**: single-tenant Entra app that requires user assignment, plus an allow-list
+  of Entra object IDs checked by the server. Only the MCP endpoint and the OAuth routes
+  exist: no docs, no health route.
+- **No keys**: storage accounts accept Entra ID only, reached with managed identities.
+  The OAuth state the server keeps is encrypted.
+- **Deployments without secrets**: GitHub Actions signs in to Azure with OIDC. The
+  deployment identity may only update the Container App. The backup identity may only
+  read the entries and write the backups. Actions are pinned by commit SHA and updated by
+  Dependabot.
+- **Logs without personal data**: tool arguments and entry contents are never logged, and
+  the access log is off because URLs carry OAuth codes. Logs are not retained.
+- **Data protection**: the data account has a deletion lock, weekly backups, and deleted
+  backups can be recovered for 30 days.
+
+## Costs
+
+The real bill since the first deployment is under one cent (CAD). Container Apps scales
+to zero and stays within its monthly free grant. The trade-off is a cold start of about
+48 s after 30 minutes without requests. Almost all of that delay is Azure allocating a
+replica and pulling the image (the app itself loads in about half a second). A monthly budget alert
+watches the subscription.
+
+## With more time
+
+- **A read-only REST API** for clients other than Claude. It was planned, then dropped:
+  the only reader is a Claude agent, which already has the MCP tools.
+- **Edit and delete tools**, with a confirmation step.
+- **More categories** (sleep, workouts…), possibly fed by other connectors.
+- **A shorter cold start**: warm the app up before the usual times of day, or move to a
+  host that keeps a small instance up for free.
+- **Alerting** on errors, with logs kept for a few days.
+- **A scheduled restore drill** that checks the latest backup.
+
+## Project layout
+
+```text
+src/lifelog/
+  app.py             ASGI app: auth, storage and MCP server wired together
+  mcp_server.py      MCP tools, descriptions and server instructions
+  service.py         business operations behind the tools
+  categories/        one module per category (drinks.py) and the registry
+  storage/           Repository interface, in-memory and Table Storage backends
+  auth.py            Entra OAuth proxy and the allow-list middleware
+  backup.py          export and restore of the entries table
+tests/               pytest, including MCP calls through FastMCP's in-memory client
+infra/               Terraform: Container Apps, storage, Entra, CI/CD identities, budget
+.github/workflows/   CI/CD and weekly backup
+```
 
 ## Requirements
 
@@ -93,9 +214,10 @@ Settings are read from environment variables prefixed with `LIFELOG_` (or a `.en
 ## Deploy to Azure
 
 The infrastructure is described with Terraform in [infra/](infra/): Azure Container Apps
-(scale to zero), Azure Table Storage for the entries, a Microsoft Entra app
-registration for sign-in, an Azure Table Storage table for the OAuth state, a
-managed identity for deployments from GitHub Actions, and a monthly budget alert. Requirements: an Azure
+(scale to zero), Azure Table Storage for the entries and their backups, a Microsoft Entra
+app registration for sign-in, an Azure Table Storage table for the OAuth state, managed
+identities for deployments and backups from GitHub Actions, and a monthly budget alert.
+Requirements: an Azure
 subscription, the [Azure CLI](https://learn.microsoft.com/cli/azure/) and
 [Terraform](https://developer.hashicorp.com/terraform/install).
 
