@@ -16,7 +16,7 @@ Légende : ⬜ à faire · 🟨 en cours · ✅ terminée (commitée) · ❌ aba
 | 4 | Stockage : interface `Repository`, mémoire et Table Storage | ✅ |
 | 5 | Outils MCP métier | ✅ |
 | 6 | ~~API REST en lecture~~ (D65) | ❌ |
-| 7 | CI/CD GitHub Actions | 🟨 |
+| 7 | CI/CD GitHub Actions | ✅ |
 | 8 | Finitions : README portfolio, sobriété des logs, revue des coûts | ⬜ |
 
 Chaque étape = une proposition détaillée validée, une exécution vérifiée, une revue, puis
@@ -144,6 +144,8 @@ par jeton Bearer Entra et même liste blanche. Les données sont lues par des ag
   Container App (D67, D68) ; image ignorée après la création (D66).
 - Variables de dépôt `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
 - Actions épinglées par SHA, Dependabot mensuel (D69).
+- Premier passage : push refusé tant que le dépôt n'avait pas l'accès en écriture au
+  package (créé à la main) ; connexion Azure refusée avec le sujet OIDC classique (D70).
 
 ### 8. Finitions
 - README portfolio : architecture, lancer, tester, design des outils MCP, décisions, ce
@@ -475,3 +477,10 @@ dépendances `uv`, une PR groupée par écosystème). Dépôt public : un SHA ne
 déplacé par un tiers, contrairement à une étiquette `v4`. Les PR de Dependabot passent
 par la tâche `test`. Remplace l'image versionnée à la main (`0.2.0-dev.N`) par
 l'étiquette du commit.
+
+**D70 — Identité fédérée sur le sujet OIDC immuable de GitHub**
+(`repo:SamuelPoirier-Dev@336244337/lifelog-mcp@1435982605:environment:production`). Les
+dépôts récents envoient le nom accompagné des identifiants numériques du compte et du
+dépôt ; le premier déploiement a échoué avec le format classique (`owner/name`). Plus
+sûr : après un renommage, un autre compte qui reprendrait l'ancien nom n'obtiendrait pas
+l'identité.

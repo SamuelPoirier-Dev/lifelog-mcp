@@ -31,7 +31,10 @@ variable "budget_start_date" {
 }
 
 variable "github_repository" {
-  description = "GitHub repository allowed to deploy, as owner/name (D67)."
+  description = <<-EOT
+    GitHub repository allowed to deploy, as it appears in the OIDC subject (D67, D70):
+    owner@owner_id/name@repo_id (gh api repos/<owner>/<name>/actions/oidc/customization/sub).
+  EOT
   type        = string
-  default     = "SamuelPoirier-Dev/lifelog-mcp"
+  default     = "SamuelPoirier-Dev@336244337/lifelog-mcp@1435982605"
 }

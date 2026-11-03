@@ -152,7 +152,7 @@ Create `infra/terraform.tfvars` (not in git):
 |---|---|
 | `subscription_id` | Azure subscription ID (`az account show --query id`) |
 | `image` | Image of the first creation, e.g. `ghcr.io/<github user>/lifelog-mcp:<tag>` |
-| `github_repository` | Optional, repository allowed to deploy (default `SamuelPoirier-Dev/lifelog-mcp`) |
+| `github_repository` | Optional, repository allowed to deploy, as in its OIDC subject: `owner@owner_id/name@repo_id` (`gh api repos/<owner>/<name>/actions/oidc/customization/sub`) |
 | `allowed_oids` | Entra object IDs allowed to use the server (`az ad signed-in-user show --query id`) |
 | `budget_email` | Address receiving the budget alerts |
 | `budget_amount` | Optional, monthly budget in the billing currency (default `5`) |
